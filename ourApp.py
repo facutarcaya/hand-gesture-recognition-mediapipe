@@ -154,7 +154,9 @@ def main():
 
             # Detect hand gesture
             if mode == 1:
-                hand_sign_id = keypoint_classifier(uniArrayLandmarks)
+                result_array = keypoint_classifier(uniArrayLandmarks)
+                debug_image = showResults(debug_image, result_array, keypoint_classifier_labels)
+                hand_sign_id = np.argmax(result_array)
                 hand_sign_text = keypoint_classifier_labels[hand_sign_id]
                 if hand_sign_text != "":
                     print('DETECTADO: ' + hand_sign_text)
@@ -164,7 +166,9 @@ def main():
                 debug_image = draw_point_history(debug_image, point_history)
                 point_history_len = len(point_history)
                 if point_history_len == (history_length):
-                    finger_gesture_id = point_history_classifier(point_history)
+                    result_array = point_history_classifier(point_history)
+                    debug_image = showResults(debug_image, result_array, point_history_classifier_labels)
+                    finger_gesture_id = np.argmax(result_array)
                     finger_gesture_text = point_history_classifier_labels[finger_gesture_id]
                     if finger_gesture_text != "":
                         print('ACTION DETECTADA: ' + finger_gesture_text)
@@ -175,6 +179,19 @@ def main():
 
     cap.release()
     cv.destroyAllWindows()
+
+def showResults(debug_image, result_array, labels):
+    result_index = np.argsort(result_array)
+    result_index = np.flip(result_index)
+    index = 0
+    while (index < 3 and index < result_index.size):
+        cv.putText(debug_image, labels[result_index[index]] + ": " + str(round(result_array[result_index[index]] * 100, 2)), (350, 30 + index * 30),
+                    cv.FONT_HERSHEY_SIMPLEX, 0.70, (0, 0, 0), 4, cv.LINE_AA)
+        cv.putText(debug_image, labels[result_index[index]] + ": " + str(round(result_array[result_index[index]] * 100, 2)), (350, 30 + index * 30),
+                    cv.FONT_HERSHEY_SIMPLEX, 0.70, (255, 255, 255), 2,
+                    cv.LINE_AA)
+        index = index + 1
+    return debug_image
 
 def getLandMarksAsUniArray(landmarks):
     uniArray = []
