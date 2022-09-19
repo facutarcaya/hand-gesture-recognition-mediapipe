@@ -36,9 +36,6 @@ class PointHistoryClassifier(object):
 
         result = self.interpreter.get_tensor(output_details_tensor_index)
 
-        result_index = np.argmax(np.squeeze(result))
+        result_array = np.squeeze(result)
 
-        if np.squeeze(result)[result_index] < self.score_th:
-            result_index = self.invalid_value
-
-        return result_index
+        return result_array

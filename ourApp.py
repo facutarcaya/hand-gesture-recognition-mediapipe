@@ -59,8 +59,12 @@ def main():
 
     # Model load #############################################################
     mp_hands = mp.solutions.hands
+
+    mp_drawing = mp.solutions.drawing_utils
+    mp_drawing_styles = mp.solutions.drawing_styles
+
     hands = mp_hands.Hands(
-        static_image_mode=False,
+        static_image_mode=True,
         max_num_hands=2,
         min_detection_confidence=min_detection_confidence,
         min_tracking_confidence=min_tracking_confidence,
@@ -89,7 +93,7 @@ def main():
     cvFpsCalc = CvFpsCalc(buffer_len=10)
 
     # Coordinate history #################################################################
-    history_length = 16
+    history_length = 16 * 2 * 42
     point_history = deque(maxlen=history_length)
 
     # Finger gesture history ################################################
@@ -121,68 +125,81 @@ def main():
         results = hands.process(image)
         image.flags.writeable = True
 
+        leftHandLandMarks = [0] * 42
+        rightHandLandMarks = [0] * 42
+
         #  ####################################################################
         if results.multi_hand_landmarks is not None:
             for hand_landmarks, handedness in zip(results.multi_hand_landmarks,
                                                   results.multi_handedness):
-
-                print(hand_landmarks.landmark[0])
-
-                # Bounding box calculation
-                brect = calc_bounding_rect(debug_image, hand_landmarks)
-                # Landmark calculation
-                landmark_list = calc_landmark_list(debug_image, hand_landmarks)
-
-                # Conversion to relative coordinates / normalized coordinates
-                pre_processed_landmark_list = pre_process_landmark(
-                    landmark_list)
-                pre_processed_point_history_list = pre_process_point_history(
-                    debug_image, point_history)
-                # Write to the dataset file
-                logging_csv(number, mode, pre_processed_landmark_list,
-                            pre_processed_point_history_list)
-
-                # Hand sign classification
-                hand_sign_id = keypoint_classifier(pre_processed_landmark_list)
-                if hand_sign_id == 2:  # Point gesture
-                    point_history.append(landmark_list[8])
+                if(handedness.classification[0].label == 'Left'):
+                    leftHandLandMarks = getLandMarksAsUniArray(hand_landmarks.landmark)
                 else:
-                    point_history.append([0, 0])
-
-                # Finger gesture classification
-                finger_gesture_id = 0
-                point_history_len = len(pre_processed_point_history_list)
-                if point_history_len == (history_length * 2):
-                    finger_gesture_id = point_history_classifier(
-                        pre_processed_point_history_list)
-
-                # Calculates the gesture IDs in the latest detection
-                finger_gesture_history.append(finger_gesture_id)
-                most_common_fg_id = Counter(
-                    finger_gesture_history).most_common()
-
-                # Drawing part
-                debug_image = draw_bounding_rect(use_brect, debug_image, brect)
-                debug_image = draw_landmarks(debug_image, landmark_list)
-                debug_image = draw_info_text(
+                    rightHandLandMarks = getLandMarksAsUniArray(hand_landmarks.landmark)
+                
+                mp_drawing.draw_landmarks(
                     debug_image,
-                    brect,
-                    handedness,
-                    keypoint_classifier_labels[hand_sign_id],
-                    point_history_classifier_labels[most_common_fg_id[0][0]],
-                )
-        else:
-            point_history.append([0, 0])
+                    hand_landmarks,
+                    mp_hands.HAND_CONNECTIONS,
+                    mp_drawing_styles.get_default_hand_landmarks_style(),
+                    mp_drawing_styles.get_default_hand_connections_style())
+            
+            uniArrayLandmarks = leftHandLandMarks
+            uniArrayLandmarks.extend(rightHandLandMarks)
 
-        debug_image = draw_point_history(debug_image, point_history)
+            point_history.extend(uniArrayLandmarks)
+
+            # Write to the dataset file
+            logging_csv(number, mode, uniArrayLandmarks, point_history)
+
+            # Detect hand gesture
+            if mode == 1:
+                result_array = keypoint_classifier(uniArrayLandmarks)
+                debug_image = showResults(debug_image, result_array, keypoint_classifier_labels)
+                hand_sign_id = np.argmax(result_array)
+                hand_sign_text = keypoint_classifier_labels[hand_sign_id]
+                if hand_sign_text != "":
+                    print('DETECTADO: ' + hand_sign_text)
+
+            #Detect hand action
+            if mode == 2:
+                debug_image = draw_point_history(debug_image, point_history)
+                point_history_len = len(point_history)
+                if point_history_len == (history_length):
+                    result_array = point_history_classifier(point_history)
+                    debug_image = showResults(debug_image, result_array, point_history_classifier_labels)
+                    finger_gesture_id = np.argmax(result_array)
+                    finger_gesture_text = point_history_classifier_labels[finger_gesture_id]
+                    if finger_gesture_text != "":
+                        print('ACTION DETECTADA: ' + finger_gesture_text)
+        
         debug_image = draw_info(debug_image, fps, mode, number)
-
         # Screen reflection #############################################################
         cv.imshow('Hand Gesture Recognition', debug_image)
 
     cap.release()
     cv.destroyAllWindows()
 
+def showResults(debug_image, result_array, labels):
+    result_index = np.argsort(result_array)
+    result_index = np.flip(result_index)
+    index = 0
+    while (index < 3 and index < result_index.size):
+        cv.putText(debug_image, labels[result_index[index]] + ": " + str(round(result_array[result_index[index]] * 100, 2)), (350, 30 + index * 30),
+                    cv.FONT_HERSHEY_SIMPLEX, 0.70, (0, 0, 0), 4, cv.LINE_AA)
+        cv.putText(debug_image, labels[result_index[index]] + ": " + str(round(result_array[result_index[index]] * 100, 2)), (350, 30 + index * 30),
+                    cv.FONT_HERSHEY_SIMPLEX, 0.70, (255, 255, 255), 2,
+                    cv.LINE_AA)
+        index = index + 1
+    return debug_image
+
+def getLandMarksAsUniArray(landmarks):
+    uniArray = []
+    for landmark in landmarks:
+        uniArray.append(landmark.x)
+        uniArray.append(landmark.y)
+    
+    return uniArray
 
 def select_mode(key, mode):
     number = -1
@@ -516,9 +533,23 @@ def draw_info_text(image, brect, handedness, hand_sign_text,
 
 
 def draw_point_history(image, point_history):
+    image_width, image_height = image.shape[1], image.shape[0]
+    landmark_point = []
+
+    isX = True
     for index, point in enumerate(point_history):
+        if isX:
+            valueX = min(int(point * image_width), image_width - 1)
+            isX = False
+        else:
+            valueY = min(int(point * image_height), image_height - 1)
+            if (index - 1) % 42 == 0 or (index - 9) % 42 == 0 or (index - 17) % 42 == 0 or (index - 25) % 42 == 0 or (index - 33) % 42 == 0 or (index - 41) % 42 == 0:
+                landmark_point.append([valueX, valueY])
+            isX = True
+
+    for index, point in enumerate(landmark_point):
         if point[0] != 0 and point[1] != 0:
-            cv.circle(image, (point[0], point[1]), 1 + int(index / 2),
+            cv.circle(image, (point[0], point[1]), 1 + int(index%12 / 2),
                       (152, 251, 152), 2)
 
     return image
