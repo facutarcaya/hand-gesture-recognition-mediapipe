@@ -125,17 +125,13 @@ def main():
         results = hands.process(image)
         image.flags.writeable = True
 
-        leftHandLandMarks = [0] * 42
-        rightHandLandMarks = [0] * 42
+        onlyHandLandMarks = [0] * 42
 
         #  ####################################################################
         if results.multi_hand_landmarks is not None:
             for hand_landmarks, handedness in zip(results.multi_hand_landmarks,
                                                   results.multi_handedness):
-                if(handedness.classification[0].label == 'Left'):
-                    leftHandLandMarks = getLandMarksAsUniArray(hand_landmarks.landmark)
-                else:
-                    rightHandLandMarks = getLandMarksAsUniArray(hand_landmarks.landmark)
+                onlyHandLandMarks = getLandMarksAsUniArray(hand_landmarks.landmark)
                 
                 mp_drawing.draw_landmarks(
                     debug_image,
@@ -144,8 +140,7 @@ def main():
                     mp_drawing_styles.get_default_hand_landmarks_style(),
                     mp_drawing_styles.get_default_hand_connections_style())
             
-            uniArrayLandmarks = leftHandLandMarks
-            uniArrayLandmarks.extend(rightHandLandMarks)
+            uniArrayLandmarks = onlyHandLandMarks
 
             point_history.extend(uniArrayLandmarks)
 
@@ -160,6 +155,7 @@ def main():
                 hand_sign_text = keypoint_classifier_labels[hand_sign_id]
                 if hand_sign_text != "":
                     print('DETECTADO: ' + hand_sign_text)
+                
 
             #Detect hand action
             if mode == 2:
