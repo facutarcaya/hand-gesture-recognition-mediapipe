@@ -4,8 +4,10 @@ import csv
 import copy
 import argparse
 import itertools
+import imutils
 from collections import Counter
 from collections import deque
+from math import fabs
 
 import cv2 as cv
 import numpy as np
@@ -110,9 +112,9 @@ def main():
         if key == 27:  # ESC
             break
         number, mode = select_mode(key, mode)
-
         # Camera capture #####################################################
         ret, image = cap.read()
+        image = imutils.resize(image, height=480)
         if not ret:
             break
         image = cv.flip(image, 1)  # Mirror display
@@ -191,9 +193,14 @@ def showResults(debug_image, result_array, labels):
 
 def getLandMarksAsUniArray(landmarks):
     uniArray = []
+    first = True
+    base_x, base_y = 0, 0
     for landmark in landmarks:
-        uniArray.append(landmark.x)
-        uniArray.append(landmark.y)
+        if first:
+            base_x, base_y = landmark.x, landmark.y
+            first = False
+        uniArray.append(landmark.x - base_x)
+        uniArray.append(landmark.y - base_y)
     
     return uniArray
 
